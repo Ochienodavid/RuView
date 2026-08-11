@@ -10,6 +10,7 @@ import { CnnEmbedder } from './cnn-embedder.js?v=13';
 import { FusionEngine } from './fusion-engine.js?v=13';
 import { PoseDecoder } from './pose-decoder.js?v=13';
 import { CanvasRenderer } from './canvas-renderer.js?v=13';
+import { withWsTicket } from '../../services/ws-ticket.js';
 
 // === State ===
 let mode = 'dual';  // 'dual' | 'video' | 'csi'
@@ -114,7 +115,9 @@ function init() {
     const url = wsUrlInput.value.trim();
     if (!url) return;
     connectWsBtn.textContent = 'Connecting...';
-    const ok = await csiSimulator.connectLive(url);
+    // ADR-272: exchange the stored bearer for a single-use ?ticket= before the
+    // upgrade — a browser cannot set an Authorization header on a WebSocket.
+    const ok = await csiSimulator.connectLive(await withWsTicket(url));
     connectWsBtn.textContent = ok ? '✓ Connected' : 'Connect';
     if (ok) {
       connectWsBtn.classList.add('active');
@@ -136,15 +139,33 @@ function init() {
   });
   csiCnn.tryLoadWasm(wasmBase);
 
-  // Auto-connect to local sensing server WebSocket if available
-  const defaultWsUrl = 'ws://localhost:8765/ws/sensing';
+  // Auto-connect to local sensing server WebSocket if available.
+  // Served from the Docker image the sensing stream lives on :3001 (same
+  // port mapping sensing.service.js uses); the standalone dev server stays
+  // on :8765.
+  const wsPortMap = { '3000': '3001' };
+  const mappedPort = wsPortMap[window.location.port];
+  const defaultWsUrl = mappedPort
+    ? `ws://${window.location.hostname}:${mappedPort}/ws/sensing`
+    : 'ws://localhost:8765/ws/sensing';
   if (wsUrlInput) wsUrlInput.value = defaultWsUrl;
-  csiSimulator.connectLive(defaultWsUrl).then(ok => {
-    if (ok && connectWsBtn) {
+  // ADR-272: exchange the stored bearer for a single-use ?ticket= before the
+  // upgrade — a browser cannot set an Authorization header on a WebSocket.
+  // ADR-295 (issue #1557): opening the socket does NOT mean live — the
+  // simulator keeps producing watermarked SYNTHETIC data until a real CSI frame
+  // is decoded. Only the verified-frame callback promotes the label to LIVE.
+  csiSimulator.onVerifiedFrame = () => {
+    if (connectWsBtn) {
       connectWsBtn.textContent = '✓ Live ESP32';
       connectWsBtn.classList.add('active');
-      statusLabel.textContent = 'LIVE CSI';
-      statusDot.classList.remove('offline');
+    }
+    statusLabel.textContent = 'LIVE CSI';
+    statusDot.classList.remove('offline');
+  };
+  withWsTicket(defaultWsUrl).then(u => csiSimulator.connectLive(u)).then(ok => {
+    if (ok) {
+      // Socket open, but no verified frame yet — stay honest.
+      statusLabel.textContent = 'SYNTHETIC';
     }
   });
 
