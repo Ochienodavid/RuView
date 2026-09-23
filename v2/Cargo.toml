@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
     "crates/wifi-densepose-core",
+    "crates/wifi-densepose-physics", # ADR-323 bounded pose assessment/correction
     "crates/wifi-densepose-signal",
     "crates/wifi-densepose-nn",
     # wifi-densepose-api / -db / -config: removed in #578.
@@ -36,6 +37,7 @@ members = [
     # their Cognitum identity instead of a shared static bearer. No login flow
     # and no outbound Cognitum API calls live here — verification only.
     "crates/ruview-auth",
+    "crates/ruview-cognitum-spaces", # ADR-325 Cognitum Spaces read client
     "crates/nvsim",
     "crates/nvsim-server",
     "crates/homecore",                 # ADR-127 — HOMECORE state machine
@@ -114,9 +116,15 @@ members = [
     "crates/ruview-twin",          # ADR-315 digital RF twin (per-deployment model)
     "crates/ruview-placement",     # ADR-308 sensor placement optimizer
     "crates/ruview-memory",        # ADR-312 long-term spatial memory / anomaly
+    "crates/ruview-spatial-memory",# ADR-326 tenant-scoped Cognitum Spaces history
     "crates/ruview-counterfactual",# ADR-313 counterfactual spatial inference
     "crates/ruview-infogain",      # ADR-314 information-gain scheduler
     "crates/ruview-active",        # ADR-309 active sensing control
+    # ADR-324 — clean-room Kooima off-axis (head-coupled perspective) projection.
+    # Dependency-free native core; wasm-bindgen surface only on wasm32.
+    "crates/ruview-offaxis",
+    # ADR-348 — RuForecast extracted to the ruvnet/RuForecast submodule
+    # (see crates/ruforecast in the exclude list below); path-deps only.
 ]
 # ADR-040: WASM edge crate targets wasm32-unknown-unknown (no_std),
 # excluded from workspace to avoid breaking `cargo test --workspace`.
@@ -129,6 +137,12 @@ exclude = [
     "crates/wifi-densepose-wasm-edge",
     "crates/homecore-plugin-example",
     "crates/worldgraph",   # ruvnet/worldgraph submodule — its own workspace (geo/worldgraph/worldmodel)
+    "crates/ruforecast",   # ruvnet/RuForecast submodule — its own workspace (ruforecast-core/model/train)
+    # LOCAL-DEV-ONLY: path-depends on an absolute, unpublished ruvnet/autogenous
+    # checkout that does not exist in CI. Build directly with
+    # `cargo build --manifest-path crates/ruforecast-autogenous-bridge/Cargo.toml`
+    # on a host with that checkout present. See its Cargo.toml/README.
+    "crates/ruforecast-autogenous-bridge",
 ]
 
 [workspace.package]
@@ -155,6 +169,16 @@ serde_yaml = "0.9"
 tokio = { version = "1.35", features = ["full"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+nalgebra = "0.34"
+smallvec = "1.15"
+bitflags = "2.9"
+rapier3d = { version = "0.33", default-features = false, features = ["std", "dim3", "f32"] }
+burn-core = { version = "0.21", default-features = false, features = ["std"] }
+burn-nn = { version = "0.21", default-features = false }
+burn-ndarray = { version = "0.21", default-features = false, features = ["std"] }
+burn-train = { version = "0.21", default-features = false }
+burn-wgpu = { version = "0.21", default-features = false, features = ["std"] }
+burn-cuda = { version = "0.21", default-features = false, features = ["std"] }
 
 # Signal processing
 ndarray = { version = "0.17", features = ["serde"] }
@@ -204,6 +228,7 @@ walkdir = "2.4"
 
 # Hashing (for proof)
 sha2 = "0.10"
+ed25519-dalek = "2.1"
 
 # CSV logging
 csv = "1.3"
@@ -239,7 +264,7 @@ midstreamer-attractor = "0.2"
 # ruvector integration (published on crates.io)
 # Vendored at origin/main (a083bd77f) in vendor/ruvector; using crates.io versions
 # until published. Bumps per ADR-152 §2.6 (2026-06-10 vendor sync survey).
-ruvector-core = "2.2.0"
+ruvector-core = "2.3.0"
 ruvector-mincut = "2.0.6"
 ruvector-attn-mincut = "2.0.4"
 ruvector-temporal-tensor = "2.0.6"
@@ -251,6 +276,7 @@ ruvector-gnn = { version = "2.2.0", default-features = false }
 
 # Internal crates
 wifi-densepose-core = { version = "0.3.0", path = "crates/wifi-densepose-core" }
+wifi-densepose-physics = { version = "0.1.0", path = "crates/wifi-densepose-physics" }
 wifi-densepose-signal = { version = "0.3.0", path = "crates/wifi-densepose-signal" }
 wifi-densepose-nn = { version = "0.3.0", path = "crates/wifi-densepose-nn" }
 wifi-densepose-api = { version = "0.3.0", path = "crates/wifi-densepose-api" }
@@ -261,6 +287,9 @@ wifi-densepose-wasm = { version = "0.3.0", path = "crates/wifi-densepose-wasm" }
 wifi-densepose-mat = { version = "0.3.0", path = "crates/wifi-densepose-mat" }
 wifi-densepose-ruvector = { version = "0.3.0", path = "crates/wifi-densepose-ruvector" }
 wifi-densepose-worldmodel = { version = "0.3.0", path = "crates/worldgraph/wifi-densepose-worldmodel" }
+ruforecast-core = { version = "0.1.0", path = "crates/ruforecast/crates/ruforecast-core" }
+ruforecast-model = { version = "0.1.0", path = "crates/ruforecast/crates/ruforecast-model" }
+ruforecast-train = { version = "0.1.0", path = "crates/ruforecast/crates/ruforecast-train" }
 
 [profile.release]
 lto = true
