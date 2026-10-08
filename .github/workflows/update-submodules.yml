@@ -58,10 +58,23 @@ jobs:
           git add vendor/
           git commit -m "chore: update vendor submodules to latest upstream"
           git push origin "$BRANCH"
-          gh pr create \
+          set +e
+          PR_OUTPUT=$(gh pr create \
             --title "chore: update vendor submodules" \
             --body "Automated submodule update to the latest upstream commit on each submodule's tracked branch (see \`.gitmodules\`). Review the pointer diff before merging." \
             --base main \
-            --head "$BRANCH"
+            --head "$BRANCH" 2>&1)
+          PR_STATUS=$?
+          set -e
+
+          echo "$PR_OUTPUT"
+          if [ "$PR_STATUS" -ne 0 ]; then
+            if grep -q "GitHub Actions is not permitted to create or approve pull requests" <<<"$PR_OUTPUT"; then
+              echo "::warning::Automatic PR creation is disabled for GITHUB_TOKEN in repository settings."
+              echo "::notice::Open this URL to create the PR manually: https://github.com/${GITHUB_REPOSITORY}/compare/main...${BRANCH}?expand=1"
+            else
+              exit "$PR_STATUS"
+            fi
+          fi
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
